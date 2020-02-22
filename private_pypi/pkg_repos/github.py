@@ -18,6 +18,7 @@ from private_pypi.pkg_repos.pkg_repo import (
         PkgRepo,
         PkgRepoConfig,
         PkgRepoSecret,
+        BackendRegistration,
         UploadPackageStatus,
         UploadPackageResult,
         UploadIndexStatus,
@@ -396,6 +397,14 @@ class GitHubPkgRepo(PkgRepo):
             error_message = traceback.format_exc()
             self.record_error(error_message)
             return DownloadIndexResult(status=DownloadIndexStatus.FAILED, message=error_message)
+
+
+class GitHubRegistration(BackendRegistration):
+    type = GITHUB_TYPE
+    pkg_repo_config_cls = GitHubConfig
+    pkg_repo_secret_cls = GitHubAuthToken
+    pkg_repo_cls = GitHubPkgRepo
+    pkg_ref_cls = GitHubPkgRef
 
 
 def github_create_package_repo(
