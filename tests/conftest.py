@@ -1,4 +1,3 @@
-from dataclasses import asdict
 import os
 import os.path
 from datetime import datetime
@@ -155,7 +154,7 @@ def preset_workflow_args():
 @pytest.fixture(scope='session')
 def preset_workflow_with_admin_secret_args():
     admin_pkg_repo_secret_file = os.path.join(tempfile.mkdtemp(), 'admin_secret.toml')
-    secret_dict = asdict(create_github_auth_token())
+    secret_dict = create_github_auth_token().dict()
     secret_dict.pop('name')
     write_toml(admin_pkg_repo_secret_file, {'preset_github_test': secret_dict})
 

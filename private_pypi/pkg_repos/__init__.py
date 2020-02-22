@@ -1,5 +1,4 @@
 from enum import Enum, auto
-from dataclasses import asdict
 from typing import Dict, Type, Iterable
 from itertools import chain
 
@@ -95,7 +94,7 @@ def create_pkg_repo(
 def dump_pkg_repo_configs(path: str, pkg_repo_configs: Iterable[PkgRepoConfig]) -> None:
     dump = {}
     for pkg_repo_config in pkg_repo_configs:
-        struct = asdict(pkg_repo_config)
+        struct = pkg_repo_config.dict()
         name = struct.pop('name')
         dump[name] = struct
 
@@ -131,7 +130,7 @@ def load_pkg_repo_secrets(path: str) -> Dict[str, PkgRepoSecret]:
 def dump_pkg_repo_index(path: str, pkg_repo_index: PkgRepoIndex):
     struct = {}
     for distrib in pkg_repo_index.all_distributions:
-        struct_pkg_refs = [asdict(pkg_ref) for pkg_ref in pkg_repo_index.get_pkg_refs(distrib)]
+        struct_pkg_refs = [pkg_ref.dict() for pkg_ref in pkg_repo_index.get_pkg_refs(distrib)]
         struct[distrib] = struct_pkg_refs
     write_toml(path, struct)
 

@@ -1,47 +1,43 @@
 from abc import abstractmethod
-from dataclasses import dataclass
 from enum import Enum, auto
 import functools
 import traceback
 from typing import Dict, List, Tuple, TypeVar
 
+from pydantic import BaseModel
 
-# TODO: Using dataclass with inheritance leads to some issues, need to reconsider the design.
-@dataclass
-class PkgRepoConfig:
+
+class PkgRepoConfig(BaseModel):
+    type: str
     name: str
-    type: str = ''
     max_file_bytes: int = 1024**3
     sync_index_interval: int = 60
 
 
-@dataclass
-class PkgRepoSecret:
+class PkgRepoSecret(BaseModel):
+    type: str
     name: str
     raw: str
-    type: str = ''
 
     @abstractmethod
     def secret_hash(self) -> str:
         pass
 
 
-@dataclass
-class PkgRef:
+class PkgRef(BaseModel):
+    type: str
     distrib: str
     package: str
     ext: str
     sha256: str
     meta: Dict[str, str]
-    type: str = ''
 
     @abstractmethod
     def auth_url(self, config: PkgRepoConfig, secret: PkgRepoSecret) -> str:
         pass
 
 
-@dataclass
-class LocalPaths:
+class LocalPaths(BaseModel):
     index: str
     log: str
     lock: str
@@ -54,8 +50,7 @@ class UploadPackageStatus(Enum):
     FAILED = auto()
 
 
-@dataclass
-class UploadPackageResult:
+class UploadPackageResult(BaseModel):
     status: UploadPackageStatus
     message: str = ''
 
@@ -64,8 +59,7 @@ class DownloadPackageStatus(Enum):
     pass  # TODO
 
 
-@dataclass
-class DownloadPackageResult:
+class DownloadPackageResult(BaseModel):
     pass  # TODO
 
 
@@ -74,8 +68,7 @@ class UploadIndexStatus(Enum):
     FAILED = auto()
 
 
-@dataclass
-class UploadIndexResult:
+class UploadIndexResult(BaseModel):
     status: UploadIndexStatus
     message: str = ''
 
@@ -85,14 +78,12 @@ class DownloadIndexStatus(Enum):
     FAILED = auto()
 
 
-@dataclass
-class DownloadIndexResult:
+class DownloadIndexResult(BaseModel):
     status: DownloadIndexStatus
     message: str = ''
 
 
-@dataclass
-class PkgRepo:
+class PkgRepo(BaseModel):
     config: PkgRepoConfig
     secret: PkgRepoSecret
     local_paths: LocalPaths
@@ -132,6 +123,11 @@ class PkgRepo:
     @abstractmethod
     def download_index(self, path: str) -> DownloadIndexResult:
         pass
+
+
+def basic_model_get_default(basic_model_cls: BaseModel, key: str):
+    assert key in basic_model_cls.__fields__
+    return basic_model_cls.__fields__[key].default
 
 
 METHOD = TypeVar('METHOD')
