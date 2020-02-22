@@ -14,7 +14,7 @@ import waitress
 from paste.translogger import TransLogger
 
 from private_pypi.pkg_repos import PkgRepoSecret, create_pkg_repo_secret
-from private_pypi.web_ui import LOGIN_HTML
+from private_pypi.web import LOGIN_HTML
 from private_pypi.workflow import (
         WorkflowStat,
         build_workflow_stat_and_run_daemon,
