@@ -4,10 +4,11 @@ import functools
 import importlib
 import pkgutil
 import traceback
-from typing import Dict, List, Tuple, Iterable, TypeVar, Type
+from typing import Dict, List, Tuple, Iterable, TypeVar, Type, Optional
+import inspect
 
 from pydantic import BaseModel
-from private_pypi.utils import read_toml, write_toml
+from private_pypi.utils import read_toml, write_toml, normalize_distribution_name
 
 
 ####################
@@ -156,7 +157,8 @@ class BackendInstanceManager:
             # Find the registration class.
             registration = None
             for obj in module.__dict__.values():
-                if issubclass(obj, BackendRegistration) and obj is not BackendRegistration:
+                if inspect.isclass(obj) \
+                        and issubclass(obj, BackendRegistration) and obj is not BackendRegistration:
                     registration = obj
 
             if registration is None:
@@ -233,15 +235,15 @@ class BackendInstanceManager:
         raise NotImplementedError('Should not dump secrets.')
 
     def load_pkg_refs(self, path: str) -> List[PkgRef]:
-        return [self.create_pkg_ref(**struct) for struct in read_toml(path)]
+        return [self.create_pkg_ref(**struct) for struct in read_toml(path)['pkgs']]
 
     def dump_pkg_refs(self, path: str, pkg_refs: Iterable[PkgRef]) -> None:  # pylint: disable=no-self-use
-        write_toml(path, [pkg_ref.dict() for pkg_ref in pkg_refs])
+        write_toml(path, {'pkgs': [pkg_ref.dict() for pkg_ref in pkg_refs]})
 
 
-####################
-# Helper functions #
-####################
+##########
+# Helper #
+##########
 def basic_model_get_default(basic_model_cls: BaseModel, key: str):
     assert key in basic_model_cls.__fields__
     return basic_model_cls.__fields__[key].default
@@ -262,3 +264,37 @@ def record_error_if_raises(method: _METHOD) -> _METHOD:
             raise
 
     return decorated
+
+
+class PkgRepoIndex:
+
+    def __init__(self, pkg_refs) -> None:
+        self._distrib_to_pkg_refs: Dict[str, List[PkgRef]] = {}
+        self._package_to_pkg_ref: Dict[str, PkgRef] = {}
+
+        for pkg_ref in pkg_refs:
+            self.add_pkg_ref(pkg_ref)
+
+    def add_pkg_ref(self, pkg_ref: PkgRef) -> None:
+        if pkg_ref.package in self._package_to_pkg_ref:
+            raise KeyError(f'package={pkg_ref.package} duplicated.')
+
+        if pkg_ref.distrib not in self._distrib_to_pkg_refs:
+            self._distrib_to_pkg_refs[pkg_ref.distrib] = []
+
+        self._distrib_to_pkg_refs[pkg_ref.distrib].append(pkg_ref)
+        self._package_to_pkg_ref[pkg_ref.package] = pkg_ref
+
+    @property
+    def all_distributions(self) -> Iterable[str]:
+        return self._distrib_to_pkg_refs.keys()
+
+    def get_pkg_refs(self, query_distrib: str) -> Optional[List[PkgRef]]:
+        distrib = normalize_distribution_name(query_distrib)
+        return self._distrib_to_pkg_refs.get(distrib)
+
+    def get_single_pkg_ref(self, query_distrib: str, query_package: str) -> Optional[PkgRef]:
+        pkg_ref = self._package_to_pkg_ref.get(query_package)
+        if pkg_ref is None or normalize_distribution_name(query_distrib) != pkg_ref.distrib:
+            return None
+        return pkg_ref
