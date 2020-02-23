@@ -139,6 +139,9 @@ class GitHubPkgRepoPrivateFields:
 
 
 class GitHubPkgRepo(PkgRepo):
+    # Override.
+    type: str = GITHUB_TYPE
+    # GitHub specific.
     config: GitHubConfig
     secret: GitHubAuthToken
 
