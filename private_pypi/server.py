@@ -22,10 +22,11 @@ from private_pypi.workflow import (
         workflow_api_simple_distrib,
         workflow_api_upload_package,
 )
+from private_pypi.utils import get_secret_key
 from private_pypi.web import LOGIN_HTML
 
 app = Flask(__name__)  # pylint: disable=invalid-name
-app.secret_key = 'MY_FRIEND_THIS_IS_NOT_SECURE'
+app.secret_key = get_secret_key()
 
 login_manager = LoginManager()  # pylint: disable=invalid-name
 login_manager.init_app(app)

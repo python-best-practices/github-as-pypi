@@ -1,9 +1,11 @@
 from dataclasses import dataclass
 import hashlib
+import os
 import os.path
 import re
 import shutil
 from typing import Callable, TextIO, Any
+import uuid
 
 from filelock import FileLock
 import toml
@@ -103,3 +105,10 @@ def git_hash_sha(path: str) -> str:
     sha1_algo.update(f"blob {size}\0".encode())
     update_hash_algo_with_file(path, sha1_algo)
     return sha1_algo.hexdigest()
+
+
+def get_secret_key():
+    secret_key = os.getenv('PRIVATE_PYPI_SECRET_KEY')
+    if secret_key is None:
+        secret_key = str(uuid.getnode())
+    return secret_key
