@@ -41,7 +41,6 @@ class FileSystemSecret(PkgRepoSecret):
 
     @property
     def token(self) -> str:
-        # pylint: disable=no-member
         return self.raw
 
     def secret_hash(self) -> str:

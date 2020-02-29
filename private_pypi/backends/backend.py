@@ -1,6 +1,8 @@
 from abc import abstractmethod
+from dataclasses import dataclass
 from enum import Enum, auto
 import functools
+import hashlib
 import importlib
 import os
 import pkgutil
@@ -9,7 +11,12 @@ from typing import Dict, List, Tuple, Iterable, TypeVar, Type, Optional
 import inspect
 
 from pydantic import BaseModel
-from private_pypi.utils import read_toml, write_toml, normalize_distribution_name
+from private_pypi.utils import (
+        read_toml,
+        write_toml,
+        normalize_distribution_name,
+        update_hash_algo_with_file,
+)
 
 
 ####################
@@ -38,6 +45,28 @@ class UploadPackageStatus(Enum):
 class UploadPackageResult(BaseModel):
     status: UploadPackageStatus
     message: str = ''
+
+
+@dataclass
+class UploadPackageContext:
+    filename: str
+    path: str
+    meta: Optional[Dict[str, str]] = None
+    failed: bool = False
+    message: str = ''
+
+    def __post_init__(self):
+        # Fill distribution name.
+        if not self.meta.get('distrib'):
+            name = self.meta.get('name')
+            if name:
+                self.meta['distrib'] = normalize_distribution_name(name)
+
+        # SHA256 checksum, also suggested by PEP-503.
+        if not self.meta.get('sha256'):
+            sha256_algo = hashlib.sha256()
+            update_hash_algo_with_file(self.path, sha256_algo)
+            self.meta['sha256'] = sha256_algo.hexdigest()
 
 
 class UploadIndexStatus(Enum):
@@ -219,7 +248,8 @@ class BackendInstanceManager:
 
         return name_to_pkg_repo_config
 
-    def dump_pkg_repo_configs(self, path: str, pkg_repo_configs: Iterable[PkgRepoConfig]) -> None:  # pylint: disable=no-self-use
+    @staticmethod
+    def dump_pkg_repo_configs(path: str, pkg_repo_configs: Iterable[PkgRepoConfig]) -> None:
         dump = {}
 
         for pkg_repo_config in pkg_repo_configs:
@@ -242,13 +272,15 @@ class BackendInstanceManager:
 
         return name_to_pkg_repo_secret
 
-    def dump_pkg_repo_secrets(self, path: str, pkg_repo_secrets: Iterable[PkgRepoSecret]) -> None:  # pylint: disable=no-self-use
+    @staticmethod
+    def dump_pkg_repo_secrets(path: str, pkg_repo_secrets: Iterable[PkgRepoSecret]) -> None:
         raise NotImplementedError('Should not dump secrets.')
 
     def load_pkg_refs(self, path: str) -> List[PkgRef]:
         return [self.create_pkg_ref(**struct) for struct in read_toml(path)['pkgs']]
 
-    def dump_pkg_refs(self, path: str, pkg_refs: Iterable[PkgRef]) -> None:  # pylint: disable=no-self-use
+    @staticmethod
+    def dump_pkg_refs(path: str, pkg_refs: Iterable[PkgRef]) -> None:
         write_toml(path, {'pkgs': [pkg_ref.dict() for pkg_ref in pkg_refs]})
 
 
