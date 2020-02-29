@@ -2,6 +2,7 @@ from abc import abstractmethod
 from enum import Enum, auto
 import functools
 import importlib
+import os
 import pkgutil
 import traceback
 from typing import Dict, List, Tuple, Iterable, TypeVar, Type, Optional
@@ -20,6 +21,13 @@ class LocalPaths(BaseModel):
     lock: str
     job: str
     cache: str
+
+    def makedirs(self):
+        os.makedirs(self.index, exist_ok=True)
+        os.makedirs(self.log, exist_ok=True)
+        os.makedirs(self.lock, exist_ok=True)
+        os.makedirs(self.job, exist_ok=True)
+        os.makedirs(self.cache, exist_ok=True)
 
 
 class UploadPackageStatus(Enum):
@@ -205,6 +213,7 @@ class BackendInstanceManager:
             if not isinstance(struct, dict):
                 raise ValueError(f'Invalid pkg_repo_config, name={name}, struct={struct}')
 
+            name = name.lower()
             config = self.create_pkg_repo_config(name=name, **struct)
             name_to_pkg_repo_config[name] = config
 
@@ -212,9 +221,11 @@ class BackendInstanceManager:
 
     def dump_pkg_repo_configs(self, path: str, pkg_repo_configs: Iterable[PkgRepoConfig]) -> None:  # pylint: disable=no-self-use
         dump = {}
+
         for pkg_repo_config in pkg_repo_configs:
             struct = pkg_repo_config.dict()
             name = struct.pop('name')
+            name = name.lower()
             dump[name] = struct
 
         write_toml(path, dump)

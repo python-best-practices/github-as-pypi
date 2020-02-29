@@ -60,6 +60,10 @@ class WorkflowStat:
     # Package repository configs.
     name_to_pkg_repo_config: Dict[str, PkgRepoConfig]
 
+    # Local paths.
+    root_local_paths: LocalPaths
+    name_to_local_paths: Dict[str, LocalPaths]
+
     # Admin secrets for index synchronization.
     name_to_admin_pkg_repo_secret: Optional[Dict[str, PkgRepoSecret]]
 
@@ -77,9 +81,6 @@ class WorkflowStat:
     # Read/write last succeeded authentication datetime.
     name_to_pkg_repo_read_mtime_shstg: DefaultDict[str, SecretHashedStorage[datetime]]
     name_to_pkg_repo_write_mtime_shstg: DefaultDict[str, SecretHashedStorage[datetime]]
-
-    # Local paths.
-    local_paths: LocalPaths
 
 
 def build_workflow_stat(
@@ -103,33 +104,43 @@ def build_workflow_stat(
         name_to_admin_pkg_repo_secret = \
                 backend_instance_manager.load_pkg_repo_secrets(admin_pkg_repo_secret_file)
 
-    # Folders.
-    local_paths = LocalPaths(
+    # Root folders.
+    root_local_paths = LocalPaths(
             index=join(root_folder, 'index'),
             log=join(root_folder, 'log'),
             lock=join(root_folder, 'lock'),
             job=join(root_folder, 'job'),
             cache=join(root_folder, 'cache'),
     )
-    # Create if not exists.
-    os.makedirs(local_paths.index, exist_ok=True)
-    os.makedirs(local_paths.log, exist_ok=True)
-    os.makedirs(local_paths.lock, exist_ok=True)
-    os.makedirs(local_paths.job, exist_ok=True)
-    os.makedirs(local_paths.cache, exist_ok=True)
+    root_local_paths.makedirs()
 
-    # Index paths of (index_lock, index).
+    name_to_local_paths = {}
     name_to_index_paths = {}
     for pkg_repo_config in name_to_pkg_repo_config.values():
-        name_to_index_paths[pkg_repo_config.name] = (
-                join(local_paths.lock, f'{pkg_repo_config.name}.index.lock'),
-                join(local_paths.index, f'{pkg_repo_config.name}.index'),
+        name = pkg_repo_config.name
+
+        # Create isolated folders for each package repository.
+        name_to_local_paths[name] = LocalPaths(
+                index=join(root_local_paths.index, name),
+                log=join(root_local_paths.log, name),
+                lock=join(root_local_paths.lock, name),
+                job=join(root_local_paths.job, name),
+                cache=join(root_local_paths.cache, name),
+        )
+        name_to_local_paths[name].makedirs()
+
+        # Index paths of (index_lock, index).
+        name_to_index_paths[name] = (
+                join(name_to_local_paths[name].lock, f'index.toml.lock'),
+                join(name_to_local_paths[name].index, f'index.toml'),
         )
 
     # Build WorkflowStat.
     wstat = WorkflowStat(
             backend_instance_manager=backend_instance_manager,
             name_to_pkg_repo_config=name_to_pkg_repo_config,
+            root_local_paths=root_local_paths,
+            name_to_local_paths=name_to_local_paths,
             name_to_admin_pkg_repo_secret=name_to_admin_pkg_repo_secret,
             name_to_index_paths=name_to_index_paths,
             name_to_index_mtime_size={},  # Will setup later.
@@ -141,7 +152,6 @@ def build_workflow_stat(
             name_to_pkg_repo_shstg=defaultdict(SecretHashedStorage),
             name_to_pkg_repo_read_mtime_shstg=defaultdict(SecretHashedStorage),
             name_to_pkg_repo_write_mtime_shstg=defaultdict(SecretHashedStorage),
-            local_paths=local_paths,
     )
 
     if name_to_admin_pkg_repo_secret:
@@ -166,8 +176,8 @@ def build_workflow_stat(
 def sync_single_local_index(wstat: WorkflowStat, name: str) -> Tuple[bool, str]:
     pkg_repo_config = wstat.name_to_pkg_repo_config[name]
 
-    pkg_repo_sercret = wstat.name_to_admin_pkg_repo_secret.get(name)
-    if pkg_repo_sercret is None:
+    pkg_repo_secret = wstat.name_to_admin_pkg_repo_secret.get(name)
+    if pkg_repo_secret is None:
         return True, f'[WARN] secret of "{name}" is not provided, skip index sync.'
 
     index_lock_path, index_path = wstat.name_to_index_paths[name]
@@ -178,8 +188,8 @@ def sync_single_local_index(wstat: WorkflowStat, name: str) -> Tuple[bool, str]:
         pkg_repo = wstat.backend_instance_manager.create_pkg_repo(
                 type=pkg_repo_config.type,
                 config=pkg_repo_config,
-                secret=pkg_repo_sercret,
-                local_paths=wstat.local_paths,
+                secret=pkg_repo_secret,
+                local_paths=wstat.name_to_local_paths[name],
         )
 
         up_to_date = False
@@ -386,7 +396,7 @@ def pkg_repo_secret_is_authenticated(
                     type=pkg_repo_config.type,
                     config=pkg_repo_config,
                     secret=pkg_repo_secret,
-                    local_paths=wstat.local_paths,
+                    local_paths=wstat.name_to_local_paths[name],
             )
 
             ready, err_msg = pkg_repo.ready()

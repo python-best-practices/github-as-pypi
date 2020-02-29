@@ -118,7 +118,7 @@ def load_secret_from_request(wstat: WorkflowStat) -> Tuple[Optional[PkgRepoSecre
 
 @app.route('/simple/', methods=['GET'])
 @login_required
-def api_simple():
+def pep503_api_simple():
     pkg_repo_secret, err_msg = load_secret_from_request(current_app.workflow_stat)
     if pkg_repo_secret is None:
         return err_msg, 401
@@ -130,7 +130,7 @@ def api_simple():
 
 @app.route('/simple/<distrib>/', methods=['GET'])
 @login_required
-def api_simple_distrib(distrib):
+def pep503_api_simple_distrib(distrib):
     pkg_repo_secret, err_msg = load_secret_from_request(current_app.workflow_stat)
     if pkg_repo_secret is None:
         return err_msg, 401
@@ -152,7 +152,7 @@ def api_simple_distrib(distrib):
 
 @app.route('/simple/<distrib>/<filename>', methods=['GET'])
 @login_required
-def api_redirect_package_download_url(distrib, filename):
+def pep503_api_redirect_package_download_url(distrib, filename):
     package, ext = splitext(filename)
     ext = ext.lstrip('.')
     if not ext:
@@ -178,10 +178,15 @@ def api_redirect_package_download_url(distrib, filename):
     return redirect(auth_url)
 
 
+@app.route('/download/<encrypted_target>', methods=['GET'])
+def download(encrypted_target):
+    '''TODO'''
+
+
 # https://warehouse.pypa.io/api-reference/legacy/#upload-api
 @app.route('/simple/', methods=['POST'])
 @login_required
-def api_upload_package():  # pylint: disable=too-many-return-statements
+def legacy_api_upload_package():  # pylint: disable=too-many-return-statements
     cache_folder = current_app.workflow_stat.local_paths.cache
 
     pkg_repo_secret, err_msg = load_secret_from_request(current_app.workflow_stat)
@@ -256,7 +261,7 @@ def run_server(
                 auth_write_expires=auth_write_expires,
         )
         server_logging_path = join(
-                current_app.workflow_stat.local_paths.log,
+                current_app.workflow_stat.root_local_paths.log,
                 'private_pypi_server.log',
         )
 
