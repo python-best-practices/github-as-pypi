@@ -29,6 +29,7 @@ psutil = "^5.6.7"
 waitress = "^1.4.3"
 Paste = "^3.4.0"
 pydantic = "^1.4"
+cryptography = "^2.8"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"

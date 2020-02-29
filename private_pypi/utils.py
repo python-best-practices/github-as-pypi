@@ -1,4 +1,6 @@
+import base64
 from dataclasses import dataclass
+import json
 import hashlib
 import os
 import os.path
@@ -6,7 +8,9 @@ import re
 import shutil
 from typing import Callable, TextIO, Any
 import uuid
+import zlib
 
+from cryptography.fernet import Fernet
 from filelock import FileLock
 import toml
 
@@ -112,3 +116,20 @@ def get_secret_key():
     if secret_key is None:
         secret_key = str(uuid.getnode())
     return secret_key
+
+
+_FERNET_SECRET_KEY = Fernet.generate_key()
+
+
+def encrypt_object_to_base64(obj):
+    dumped = json.dumps(obj).encode()
+    compressed_dumped = zlib.compress(dumped)
+    data = Fernet(_FERNET_SECRET_KEY).encrypt(compressed_dumped)
+    return base64.b64encode(data).decode()
+
+
+def decrypt_base64_to_object(text):
+    base64_decoded = base64.b64decode(text.encode())
+    compressed_dumped = Fernet(_FERNET_SECRET_KEY).decrypt(base64_decoded)
+    dumped = zlib.decompress(compressed_dumped)
+    return json.loads(dumped.decode())

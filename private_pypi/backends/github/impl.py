@@ -51,8 +51,6 @@ class GitHubConfig(PkgRepoConfig):
 
         if not self.owner or not self.repo:
             raise ValueError('owner or repo is empty.')
-        if self.type != GITHUB_TYPE:
-            raise ValueError(f'type != {GITHUB_TYPE}')
 
 
 class GitHubAuthToken(PkgRepoSecret):
