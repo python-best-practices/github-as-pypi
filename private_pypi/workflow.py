@@ -215,7 +215,7 @@ def sync_single_local_index(wstat: WorkflowStat, name: str) -> Tuple[bool, str]:
 
         return True, f'[PASS] "{name}" is up-to-date.'
 
-    except:  # pylint: disable=bare-except
+    except Exception:  # pylint: disable=broad-except
         return False, f'[ERROR] traceback of "{name}":\n' + traceback.format_exc()
 
 
@@ -276,7 +276,7 @@ def sync_local_index_daemon(
 
                     name_to_sync_mtime[pkg_repo_config.name] = datetime.now()
 
-                except:  # pylint: disable=bare-except
+                except Exception:  # pylint: disable=broad-except
                     lfl_stderr.write(traceback.format_exc())
 
             time.sleep(1.0)
@@ -433,7 +433,7 @@ def keep_pkg_repo_index_up_to_date(wstat: WorkflowStat, name: str) -> Tuple[bool
                 wstat.name_to_pkg_repo_index[pkg_repo_config.name] = \
                         PkgRepoIndex(wstat.backend_instance_manager.load_pkg_refs(index_path))
 
-    except:  # pylint: disable=bare-except
+    except Exception:  # pylint: disable=broad-except
         return False, traceback.format_exc()
 
     return True, ''
@@ -445,7 +445,7 @@ def get_pkg_repo_index(wstat: WorkflowStat, name: str) -> Tuple[Optional[PkgRepo
         with FileLock(index_lock_path, timeout=1.0):
             return wstat.name_to_pkg_repo_index[name], ''
 
-    except:  # pylint: disable=bare-except
+    except Exception:  # pylint: disable=broad-except
         return None, traceback.format_exc()
 
 
@@ -586,7 +586,7 @@ def workflow_api_redirect_package_download_url(
         auth_url = pkg_ref.auth_url(wstat.name_to_pkg_repo_config[name], pkg_repo_secret)
         return auth_url, '', -1
 
-    except:  # pylint: disable=bare-except
+    except Exception:  # pylint: disable=broad-except
         return None, 'Failed to get resource.\n' + traceback.format_exc(), 401
 
 

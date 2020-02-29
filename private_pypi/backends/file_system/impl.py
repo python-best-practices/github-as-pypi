@@ -49,6 +49,7 @@ class FileSystemSecret(PkgRepoSecret):
         sha256_algo.update(self.raw.encode())
         return f'fs-{sha256_algo.hexdigest()}'
 
+
 class FileSystemPkgRef(PkgRef):
     # Override.
     type: str = FILE_SYSTEM_TYPE

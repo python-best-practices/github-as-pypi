@@ -122,14 +122,20 @@ _FERNET_SECRET_KEY = Fernet.generate_key()
 
 
 def encrypt_object_to_base64(obj):
-    dumped = json.dumps(obj).encode()
-    compressed_dumped = zlib.compress(dumped)
-    data = Fernet(_FERNET_SECRET_KEY).encrypt(compressed_dumped)
-    return base64.b64encode(data).decode()
+    try:
+        dumped = json.dumps(obj).encode()
+        compressed_dumped = zlib.compress(dumped)
+        data = Fernet(_FERNET_SECRET_KEY).encrypt(compressed_dumped)
+        return base64.b64encode(data).decode()
+    except Exception:  # pylint: disable=broad-except
+        return None
 
 
 def decrypt_base64_to_object(text):
-    base64_decoded = base64.b64decode(text.encode())
-    compressed_dumped = Fernet(_FERNET_SECRET_KEY).decrypt(base64_decoded)
-    dumped = zlib.decompress(compressed_dumped)
-    return json.loads(dumped.decode())
+    try:
+        base64_decoded = base64.b64decode(text.encode())
+        compressed_dumped = Fernet(_FERNET_SECRET_KEY).decrypt(base64_decoded)
+        dumped = zlib.decompress(compressed_dumped)
+        return json.loads(dumped.decode())
+    except Exception:  # pylint: disable=broad-except
+        return None

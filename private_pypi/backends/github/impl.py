@@ -163,7 +163,7 @@ class GitHubPkgRepo(PkgRepo):
             self._pvt.username = self._pvt.client.get_user().login
             self._pvt.permission = self._pvt.repo.get_collaborator_permission(self._pvt.username)
 
-        except:  # pylint: disable=bare-except
+        except Exception:  # pylint: disable=broad-except
             self.record_error(traceback.format_exc())
 
     def record_error(self, error_message: str) -> None:
@@ -361,7 +361,7 @@ class GitHubPkgRepo(PkgRepo):
 
             return UploadIndexResult(status=UploadIndexStatus.SUCCEEDED)
 
-        except:  # pylint: disable=bare-except
+        except Exception:  # pylint: disable=broad-except
             error_message = traceback.format_exc()
             self.record_error(error_message)
             return UploadIndexResult(status=UploadIndexStatus.FAILED, message=error_message)
@@ -390,7 +390,7 @@ class GitHubPkgRepo(PkgRepo):
 
             return DownloadIndexResult(status=DownloadIndexStatus.SUCCEEDED)
 
-        except:  # pylint: disable=bare-except
+        except Exception:  # pylint: disable=broad-except
             error_message = traceback.format_exc()
             self.record_error(error_message)
             return DownloadIndexResult(status=DownloadIndexStatus.FAILED, message=error_message)
