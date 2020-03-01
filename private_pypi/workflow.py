@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import logging
 import os
-from os.path import exists, getmtime, getsize, join
+from os.path import abspath, exists, getmtime, getsize, join
 import subprocess
 import threading
 import time
@@ -289,6 +289,8 @@ def build_workflow_stat_and_run_daemon(
         auth_read_expires: int,
         auth_write_expires: int,
 ) -> WorkflowStat:
+    root_folder = abspath(root_folder)
+
     wstat = build_workflow_stat(
             pkg_repo_config_file=pkg_repo_config_file,
             admin_pkg_repo_secret_file=admin_pkg_repo_secret_file,

@@ -169,7 +169,7 @@ class GitHubPkgRepo(PkgRepo):
     def auth_write(self) -> bool:
         return self._pvt.permission in ('admin', 'write')
 
-    def _check_published_release_not_exists(self, ctx: GitHubUploadPackageContext):
+    def _check_if_published_release_not_exists(self, ctx: GitHubUploadPackageContext):
         try:
             self._pvt.repo.get_release(ctx.filename)
             ctx.failed = True
@@ -237,7 +237,8 @@ class GitHubPkgRepo(PkgRepo):
         ctx = GitHubUploadPackageContext(filename=filename, meta=meta, path=path)
 
         for action in (
-                self._check_published_release_not_exists,
+                lambda _: None,  # Validate the context initialization.
+                self._check_if_published_release_not_exists,
                 self._create_draft_release,
                 self._upload_package_as_release_asset,
                 self._fill_meta_and_publish_release,

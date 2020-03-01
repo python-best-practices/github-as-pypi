@@ -61,12 +61,25 @@ class UploadPackageContext:
             name = self.meta.get('name')
             if name:
                 self.meta['distrib'] = normalize_distribution_name(name)
+            else:
+                self.failed = True
+                self.message = 'Cannot generate the distribution name.'
+        assert self.meta_distrib
 
         # SHA256 checksum, also suggested by PEP-503.
         if not self.meta.get('sha256'):
             sha256_algo = hashlib.sha256()
             update_hash_algo_with_file(self.path, sha256_algo)
             self.meta['sha256'] = sha256_algo.hexdigest()
+        assert self.meta_sha256
+
+    @property
+    def meta_distrib(self) -> str:
+        return self.meta['distrib']
+
+    @property
+    def meta_sha256(self) -> str:
+        return self.meta['sha256']
 
 
 class UploadIndexStatus(Enum):
