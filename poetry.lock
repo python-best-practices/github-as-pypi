@@ -167,18 +167,6 @@ Flask = "*"
 
 [[package]]
 category = "main"
-description = "huey, a little task queue"
-name = "huey"
-optional = false
-python-versions = "*"
-version = "2.2.0"
-
-[package.extras]
-backends = ["redis (>=3.0.0)"]
-redis = ["redis (>=3.0.0)"]
-
-[[package]]
-category = "main"
 description = "Internationalized Domain Names in Applications (IDNA)"
 name = "idna"
 optional = false
@@ -564,7 +552,7 @@ docs = ["sphinx", "jaraco.packaging (>=3.2)", "rst.linker (>=1.9)"]
 testing = ["jaraco.itertools"]
 
 [metadata]
-content-hash = "27a0662608c21300ba0b14ff5df7b27f0b11b809924a424bc7064c2108c044d2"
+content-hash = "220181a24a1bb2015d81adaf33be7a88ff3019ccaca35d60a82807da57435ce9"
 python-versions = "^3.7"
 
 [metadata.files]
@@ -667,9 +655,6 @@ flask = [
 flask-login = [
     {file = "Flask-Login-0.5.0.tar.gz", hash = "sha256:6d33aef15b5bcead780acc339464aae8a6e28f13c90d8b1cf9de8b549d1c0b4b"},
     {file = "Flask_Login-0.5.0-py2.py3-none-any.whl", hash = "sha256:7451b5001e17837ba58945aead261ba425fdf7b4f0448777e597ddab39f4fba0"},
-]
-huey = [
-    {file = "huey-2.2.0.tar.gz", hash = "sha256:15cef4225f7ae200fbecf89a0fed13e389fd751d6c8e1d3b26562b7df953de0e"},
 ]
 idna = [
     {file = "idna-2.8-py2.py3-none-any.whl", hash = "sha256:ea8b7f6188e6fa117537c3df7da9fc686d485087abf6ac197f9c46432f7e4a3c"},
