@@ -1,3 +1,4 @@
+import atexit
 from collections import defaultdict
 import contextlib
 from dataclasses import dataclass
@@ -6,14 +7,16 @@ import logging
 import os
 from os.path import abspath, exists, getmtime, getsize, join
 import subprocess
+import socket
 import threading
-import time
 import traceback
 from typing import DefaultDict, Dict, Generic, List, Optional, Tuple, TypeVar
 
 from filelock import FileLock
-import fire
 from jinja2 import Template
+import psutil
+import redis_server
+from apscheduler.schedulers.background import BackgroundScheduler
 
 from private_pypi.backends.backend import (
         DownloadIndexStatus,
@@ -26,7 +29,8 @@ from private_pypi.backends.backend import (
         UploadPackageStatus,
         BackendInstanceManager,
 )
-from private_pypi.utils import LockedFileLikeObject, locked_copy_file
+from private_pypi.job import dynamic_dramatiq
+from private_pypi.utils import locked_copy_file
 
 SHST = TypeVar('SHST')
 
@@ -81,6 +85,8 @@ class WorkflowStat:
     # Read/write last succeeded authentication datetime.
     name_to_pkg_repo_read_mtime_shstg: DefaultDict[str, SecretHashedStorage[datetime]]
     name_to_pkg_repo_write_mtime_shstg: DefaultDict[str, SecretHashedStorage[datetime]]
+
+    scheduler: BackgroundScheduler
 
 
 def build_workflow_stat(
@@ -152,6 +158,7 @@ def build_workflow_stat(
             name_to_pkg_repo_shstg=defaultdict(SecretHashedStorage),
             name_to_pkg_repo_read_mtime_shstg=defaultdict(SecretHashedStorage),
             name_to_pkg_repo_write_mtime_shstg=defaultdict(SecretHashedStorage),
+            scheduler=BackgroundScheduler(),
     )
 
     if name_to_admin_pkg_repo_secret:
@@ -233,89 +240,123 @@ def sync_local_index(wstat: WorkflowStat) -> Tuple[bool, str]:
     return all(all_passed), '\n'.join(all_logs)
 
 
-def sync_local_index_daemon(
+@dynamic_dramatiq.actor()
+def sync_local_index_job(
         pkg_repo_config_file: str,
         admin_pkg_repo_secret_file: str,
         root_folder: str,
-) -> int:
+        name: str,
+):
+    wstat = build_workflow_stat(
+            pkg_repo_config_file=pkg_repo_config_file,
+            admin_pkg_repo_secret_file=admin_pkg_repo_secret_file,
+            root_folder=root_folder,
+            auth_read_expires=0,
+            auth_write_expires=0,
+    )
+
     # Setup logging.
-    logging_lock_path = join(root_folder, 'lock/private_pypi_sync_local_index.log.lock')
-    logging_path = join(root_folder, 'log/private_pypi_sync_local_index.log')
-
-    logging.basicConfig(level=logging.INFO, filename=logging_path)
+    logging.basicConfig(level=logging.INFO)
     logging.getLogger("filelock").setLevel(logging.WARNING)
+    logger = logging.getLogger()
+    logging_path = join(wstat.name_to_local_paths[name].log, 'sync_local_index_job.log')
+    logger.addHandler(logging.FileHandler(logging_path))
 
-    logger_stdout = logging.getLogger('stdout')
-    lfl_stdout = LockedFileLikeObject(logging_lock_path, logger_stdout.info)
+    # Sync.
+    try:
+        passed, log = sync_single_local_index(wstat, name)
+        if passed:
+            logger.info(log)
+        else:
+            logger.error(log)
 
-    logger_stderr = logging.getLogger('stderr')
-    lfl_stderr = LockedFileLikeObject(logging_lock_path, logger_stderr.error)
-
-    with contextlib.redirect_stdout(lfl_stdout), contextlib.redirect_stderr(lfl_stderr):
-        wstat = build_workflow_stat(
-                pkg_repo_config_file=pkg_repo_config_file,
-                admin_pkg_repo_secret_file=admin_pkg_repo_secret_file,
-                root_folder=root_folder,
-                auth_read_expires=0,
-                auth_write_expires=0,
-        )
-        name_to_sync_mtime = {name: datetime.min for name in wstat.name_to_pkg_repo_config}
-
-        while True:
-            for pkg_repo_config in wstat.name_to_pkg_repo_config.values():
-                try:
-                    delta = datetime.now() - name_to_sync_mtime[pkg_repo_config.name]
-                    if delta.total_seconds() < pkg_repo_config.sync_index_interval:
-                        continue
-
-                    passed, log = sync_single_local_index(wstat, pkg_repo_config.name)
-                    if passed:
-                        lfl_stdout.write(log)
-                    else:
-                        lfl_stderr.write(log)
-
-                    name_to_sync_mtime[pkg_repo_config.name] = datetime.now()
-
-                except Exception:  # pylint: disable=broad-except
-                    lfl_stderr.write(traceback.format_exc())
-
-            time.sleep(1.0)
+    except Exception:  # pylint: disable=broad-except
+        logger.error(traceback.format_exc())
 
 
-def build_workflow_stat_and_run_daemon(
+def random_select_port() -> str:
+    with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as _socket:
+        _socket.bind(('localhost', 0))
+        _socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        _, port = _socket.getsockname()
+        return str(port)
+
+
+def stop_all_children_processes():
+    procs = psutil.Process().children()
+    for proc in procs:
+        proc.terminate()
+
+    _, alive = psutil.wait_procs(procs, timeout=10)
+    for proc in alive:
+        proc.kill()
+
+
+def initialize_workflow(
         pkg_repo_config_file: str,
         admin_pkg_repo_secret_file: Optional[str],
         root_folder: str,
         auth_read_expires: int,
         auth_write_expires: int,
 ) -> WorkflowStat:
-    root_folder = abspath(root_folder)
+    # All processes in the current process group will be terminated
+    # with the lead process.
+    os.setpgrp()
+    atexit.register(stop_all_children_processes)
 
+    # Run Redis.
+    redis_port = random_select_port()
+    pgid = os.getpgrp()
+    subprocess.Popen(  # pylint: disable=subprocess-popen-preexec-fn
+            [redis_server.REDIS_SERVER_PATH, '--port', redis_port],
+            # Attach to the current process group.
+            preexec_fn=lambda: os.setpgid(0, pgid),
+            # Suppress stdout and stderr.
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+    )
+
+    # Set broker.
+    from dramatiq.brokers.redis import RedisBroker  # pylint: disable=import-outside-toplevel
+    dynamic_dramatiq.set_broker(RedisBroker(host='localhost', port=redis_port))
+
+    # Run worker.
+    dramatiq_env = dict(os.environ)
+    dramatiq_env['DYNAMIC_DRAMATIQ_REDIS_BROKER_PORT'] = redis_port
+    subprocess.Popen(  # pylint: disable=subprocess-popen-preexec-fn
+            ['dramatiq', 'private_pypi.job', '--processes', '1'],
+            # Share env.
+            env=dramatiq_env,
+            # Attach to the current process group.
+            preexec_fn=lambda: os.setpgid(0, pgid),
+            # Suppress stdout and stderr.
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+    )
+
+    # Initialize workflow state.
     wstat = build_workflow_stat(
             pkg_repo_config_file=pkg_repo_config_file,
             admin_pkg_repo_secret_file=admin_pkg_repo_secret_file,
-            root_folder=root_folder,
+            root_folder=abspath(root_folder),
             auth_read_expires=auth_read_expires,
             auth_write_expires=auth_write_expires,
     )
 
-    if admin_pkg_repo_secret_file:
-        pgid = os.getpgrp()
-        subprocess.Popen(  # pylint: disable=subprocess-popen-preexec-fn
-                [
-                        'private_pypi_sync_local_index_daemon',
-                        pkg_repo_config_file,
-                        admin_pkg_repo_secret_file,
-                        root_folder,
-                ],
-                # Share env for resolving `private_pypi_sync_local_index_daemon`.
-                env=dict(os.environ),
-                # Attach to the current process group.
-                preexec_fn=lambda: os.setpgid(0, pgid),
-                # Suppress stdout and stderr.
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+    # Schedule sync_local_index_job.
+    for name, pkg_repo_config in wstat.name_to_pkg_repo_config.items():
+        wstat.scheduler.add_job(
+                sync_local_index_job,
+                trigger='interval',
+                kwargs={
+                        'pkg_repo_config_file': pkg_repo_config_file,
+                        'admin_pkg_repo_secret_file': admin_pkg_repo_secret_file,
+                        'root_folder': root_folder,
+                        'name': name,
+                },
+                seconds=pkg_repo_config.sync_index_interval,
         )
+    wstat.scheduler.start()
 
     return wstat
 
@@ -618,6 +659,3 @@ def workflow_api_upload_package(
         raise ValueError('Invalid UploadPackageStatus')
 
     return result.message, status_code
-
-
-sync_local_index_daemon_cli = lambda: fire.Fire(sync_local_index_daemon)  # pylint: disable=invalid-name

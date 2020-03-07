@@ -1,6 +1,4 @@
-import atexit
 from dataclasses import dataclass
-import os
 from os.path import join, splitext
 from typing import Any, Optional, Tuple
 import uuid
@@ -9,14 +7,13 @@ import logging
 import fire
 from flask import Flask, current_app, redirect, request, session
 from flask_login import LoginManager, UserMixin, current_user, login_required
-import psutil
 import waitress
 from paste.translogger import TransLogger
 
 from private_pypi.backends.backend import PkgRepoSecret
 from private_pypi.workflow import (
         WorkflowStat,
-        build_workflow_stat_and_run_daemon,
+        initialize_workflow,
         workflow_api_redirect_package_download_url,
         workflow_api_simple,
         workflow_api_simple_distrib,
@@ -220,16 +217,6 @@ def legacy_api_upload_package():  # pylint: disable=too-many-return-statements
     return body, status_code
 
 
-def stop_all_children_processes():
-    procs = psutil.Process().children()
-    for proc in procs:
-        proc.terminate()
-
-    _, alive = psutil.wait_procs(procs, timeout=10)
-    for proc in alive:
-        proc.kill()
-
-
 def run_server(
         config: str,
         root: str,
@@ -242,18 +229,13 @@ def run_server(
         port: int = 8888,
         **waitress_options: Any,
 ):
-    # All processes in the current process group will be terminated
-    # with the lead process.
-    os.setpgrp()
-    atexit.register(stop_all_children_processes)
-
     # Make sure EXTRA_INDEX_URL ends with slash.
     # NOTE: EXTRA_INDEX_URL will be set as '/' if --extra_index_url=''.
     app.config['EXTRA_INDEX_URL'] = extra_index_url.rstrip('/') + '/'
 
     with app.app_context():
         # Init.
-        current_app.workflow_stat = build_workflow_stat_and_run_daemon(
+        current_app.workflow_stat = initialize_workflow(
                 pkg_repo_config_file=config,
                 admin_pkg_repo_secret_file=admin_secret,
                 root_folder=root,
@@ -268,6 +250,7 @@ def run_server(
     # Setup logging.
     logging.basicConfig(level=logging.INFO)
     logging.getLogger("filelock").setLevel(logging.WARNING)
+    logging.getLogger("apscheduler").setLevel(logging.WARNING)
     logging.getLogger().addHandler(logging.FileHandler(server_logging_path))
 
     if debug:
