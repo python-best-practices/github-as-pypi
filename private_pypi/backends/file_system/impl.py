@@ -1,13 +1,14 @@
 from dataclasses import dataclass
 import hashlib
 from os import makedirs
-from os.path import isdir, join, exists, basename
+from os.path import isdir, join, exists
 import pathlib
 import shutil
 from typing import Dict, List, Tuple
 import traceback
 
 from filelock import FileLock
+import shortuuid
 
 from private_pypi.backends.backend import (
         PkgRef,
@@ -21,15 +22,10 @@ from private_pypi.backends.backend import (
         UploadIndexResult,
         DownloadIndexStatus,
         DownloadIndexResult,
-        record_error_if_raises,
-        basic_model_get_default,
+        BackendInstanceManager,
 )
-from private_pypi.utils import (
-        write_toml,
-        normalize_distribution_name,
-        update_hash_algo_with_file,
-        git_hash_sha,
-)
+from private_pypi.utils import write_toml, git_hash_sha
+from private_pypi.job import dynamic_dramatiq
 
 FILE_SYSTEM_TYPE = 'file_system'
 
@@ -76,6 +72,18 @@ class FileSystemPkgRepoPrivateFields:
 
 LOCK_TIMEOUT = 0.5
 META_SUFFIX = '.meta'
+
+
+@dynamic_dramatiq.actor()
+def update_index_job(file_system_pkg_repo_kwargs):
+    pkg_repo = FileSystemPkgRepo(**file_system_pkg_repo_kwargs)
+
+    pkg_refs = pkg_repo.collect_all_published_packages()
+    tmp_index_path = join(pkg_repo.local_paths.cache, f'tmp_index_{shortuuid.uuid()}.toml')
+    BackendInstanceManager.dump_pkg_refs(tmp_index_path, pkg_refs)
+
+    if not pkg_repo.local_index_is_up_to_date(tmp_index_path):
+        pkg_repo.upload_index(tmp_index_path)
 
 
 class FileSystemPkgRepo(PkgRepo):
@@ -125,6 +133,14 @@ class FileSystemPkgRepo(PkgRepo):
     def _storage_path(self) -> str:
         return join(self.local_paths.cache, 'storage')
 
+    @property
+    def _index_path(self) -> str:
+        return join(self._storage_path, 'index.toml')
+
+    @property
+    def _index_lock_path(self) -> str:
+        return join(self.local_paths.lock, 'index.toml.lock')
+
     def _distrib_path(self, distrib: str) -> str:
         path = join(self._storage_path, distrib)
         makedirs(path, exist_ok=True)
@@ -152,6 +168,8 @@ class FileSystemPkgRepo(PkgRepo):
                 # Save package & meta.
                 shutil.copyfile(ctx.path, pkg_path)
                 write_toml(pkg_meta_path, ctx.meta)
+
+            update_index_job(self.dict())
 
         except TimeoutError:
             ctx.failed = True
@@ -194,7 +212,7 @@ class FileSystemPkgRepo(PkgRepo):
                     filename = child.name
                     filename_to_package[filename] = str(child)
 
-            for filename in set(filename_to_package) & set(filename_to_meta):
+            for filename in sorted(set(filename_to_package) & set(filename_to_meta)):
                 pkg_refs.append(
                         FileSystemPkgRef(
                                 package_path=filename_to_package[filename],
@@ -204,10 +222,45 @@ class FileSystemPkgRepo(PkgRepo):
         return pkg_refs
 
     def local_index_is_up_to_date(self, path: str) -> bool:
-        pass
+        try:
+            with FileLock(self._index_lock_path, timeout=LOCK_TIMEOUT):
+                return exists(self._index_path) \
+                        and git_hash_sha(path) == git_hash_sha(self._index_path)
+        except:
+            return False
 
     def upload_index(self, path: str) -> UploadIndexResult:
-        pass
+        try:
+            with FileLock(self._index_lock_path, timeout=LOCK_TIMEOUT):
+                shutil.copyfile(path, self._index_path)
+            return UploadIndexResult(status=UploadIndexStatus.SUCCEEDED)
+
+        except TimeoutError:
+            return UploadIndexResult(
+                    status=UploadIndexStatus.FAILED,
+                    message='upload_index: Lock acquire timeout.',
+            )
+
+        except Exception:
+            return UploadIndexResult(
+                    status=UploadIndexStatus.FAILED,
+                    message='upload_index:\n' + traceback.format_exc(),
+            )
 
     def download_index(self, path: str) -> DownloadIndexResult:
-        pass
+        try:
+            with FileLock(self._index_lock_path, timeout=LOCK_TIMEOUT):
+                shutil.copyfile(self._index_path, path)
+            return DownloadIndexResult(status=DownloadIndexStatus.SUCCEEDED)
+
+        except TimeoutError:
+            return DownloadIndexResult(
+                    status=DownloadIndexStatus.FAILED,
+                    message='download_index: Lock acquire timeout.',
+            )
+
+        except Exception:
+            return DownloadIndexResult(
+                    status=DownloadIndexStatus.FAILED,
+                    message='download_index:\n' + traceback.format_exc(),
+            )
