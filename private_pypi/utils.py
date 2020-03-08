@@ -1,5 +1,6 @@
 import base64
 from dataclasses import dataclass
+from datetime import datetime
 import json
 import hashlib
 import os
@@ -139,3 +140,34 @@ def decrypt_base64_to_object(text):
         return json.loads(dumped.decode())
     except Exception:  # pylint: disable=broad-except
         return None
+
+
+def _now_timestamp() -> int:
+    return int(datetime.now().timestamp())
+
+
+def encrypt_local_file_ref(path: str, filename: str, max_expired: int = 300):
+    return encrypt_object_to_base64({
+            'path': path,
+            'filename': filename,
+            'timestamp': _now_timestamp(),
+            'max_expired': max_expired,
+    })
+
+
+def decrypt_local_file_ref(text):
+    msg = decrypt_base64_to_object(text)
+    if msg is None:
+        return False, None, None
+
+    path = msg.get('path')
+    filename = msg.get('filename')
+    timestamp = msg.get('timestamp')
+    max_expired = msg.get('max_expired')
+    if not all((path, filename, timestamp, max_expired)):
+        return False, None, None
+
+    if _now_timestamp() - timestamp >= max_expired:
+        return False, None, None
+
+    return True, path, filename

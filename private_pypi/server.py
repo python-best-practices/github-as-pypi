@@ -5,7 +5,7 @@ import uuid
 import logging
 
 import fire
-from flask import Flask, current_app, redirect, request, session
+from flask import Flask, current_app, redirect, request, session, send_file
 from flask_login import LoginManager, UserMixin, current_user, login_required
 import waitress
 from paste.translogger import TransLogger
@@ -19,7 +19,7 @@ from private_pypi.workflow import (
         workflow_api_simple_distrib,
         workflow_api_upload_package,
 )
-from private_pypi.utils import get_secret_key
+from private_pypi.utils import get_secret_key, decrypt_local_file_ref
 from private_pypi.web import LOGIN_HTML
 
 app = Flask(__name__)  # pylint: disable=invalid-name
@@ -175,16 +175,22 @@ def pep503_api_redirect_package_download_url(distrib, filename):
     return redirect(auth_url)
 
 
-@app.route('/download/<encrypted_target>', methods=['GET'])
-def download(encrypted_target):
-    '''TODO'''
+@app.route('/local_file/<encrypted_ref>', methods=['GET'])
+def local_file(encrypted_ref):
+    passed, path, filename = decrypt_local_file_ref(encrypted_ref)
+    if not passed:
+        return 'Expired or invalid encrypted_ref.', 401
+
+    rsp = send_file(path, as_attachment=True, attachment_filename=filename)
+    rsp.direct_passthrough = False
+    return rsp
 
 
 # https://warehouse.pypa.io/api-reference/legacy/#upload-api
 @app.route('/simple/', methods=['POST'])
 @login_required
 def legacy_api_upload_package():  # pylint: disable=too-many-return-statements
-    cache_folder = current_app.workflow_stat.local_paths.cache
+    cache_folder = current_app.workflow_stat.root_local_paths.cache
 
     pkg_repo_secret, err_msg = load_secret_from_request(current_app.workflow_stat)
     if pkg_repo_secret is None:

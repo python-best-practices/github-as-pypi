@@ -299,6 +299,16 @@ def initialize_workflow(
         auth_read_expires: int,
         auth_write_expires: int,
 ) -> WorkflowStat:
+    # Initialize workflow state.
+    # NOTE: backend_instance_manager must be created before broker setup.
+    wstat = build_workflow_stat(
+            pkg_repo_config_file=pkg_repo_config_file,
+            admin_pkg_repo_secret_file=admin_pkg_repo_secret_file,
+            root_folder=abspath(root_folder),
+            auth_read_expires=auth_read_expires,
+            auth_write_expires=auth_write_expires,
+    )
+
     # All processes in the current process group will be terminated
     # with the lead process.
     os.setpgrp()
@@ -332,15 +342,6 @@ def initialize_workflow(
             # Suppress stdout and stderr.
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-    )
-
-    # Initialize workflow state.
-    wstat = build_workflow_stat(
-            pkg_repo_config_file=pkg_repo_config_file,
-            admin_pkg_repo_secret_file=admin_pkg_repo_secret_file,
-            root_folder=abspath(root_folder),
-            auth_read_expires=auth_read_expires,
-            auth_write_expires=auth_write_expires,
     )
 
     # Schedule sync_local_index_job.

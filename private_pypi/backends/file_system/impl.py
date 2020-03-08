@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import hashlib
 from os import makedirs
-from os.path import isdir, join, exists
+from os.path import isdir, join, exists, splitext
 import pathlib
 import shutil
 from typing import Dict, List, Tuple
@@ -24,7 +24,12 @@ from private_pypi.backends.backend import (
         DownloadIndexResult,
         BackendInstanceManager,
 )
-from private_pypi.utils import write_toml, git_hash_sha
+from private_pypi.utils import (
+        write_toml,
+        read_toml,
+        git_hash_sha,
+        encrypt_local_file_ref,
+)
 from private_pypi.job import dynamic_dramatiq
 
 FILE_SYSTEM_TYPE = 'file_system'
@@ -58,10 +63,13 @@ class FileSystemPkgRef(PkgRef):
     type: str = FILE_SYSTEM_TYPE
     # File system specific.
     package_path: str
-    meta_path: str
 
     def auth_url(self, config: FileSystemConfig, secret: FileSystemSecret) -> str:
-        pass
+        encrypted_ref = encrypt_local_file_ref(self.package_path, f'{self.package}.{self.ext}')
+        if not encrypted_ref:
+            raise RuntimeError(f'encrypt_local_file_ref failed ({self.package_path})')
+
+        return f'/local_file/{encrypted_ref}#sha256={self.sha256}'
 
 
 @dataclass
@@ -213,10 +221,28 @@ class FileSystemPkgRepo(PkgRepo):
                     filename_to_package[filename] = str(child)
 
             for filename in sorted(set(filename_to_package) & set(filename_to_meta)):
+                meta = read_toml(filename_to_meta[filename])
+
+                distrib = meta.get('distrib')
+                sha256 = meta.get('sha256')
+                if not distrib or not sha256:
+                    continue
+
+                package, ext = splitext(filename)
+                ext = ext.lstrip('.')
+                if not package or not ext:
+                    continue
+                if len(ext) > len('tar.gz'):
+                    continue
+
                 pkg_refs.append(
                         FileSystemPkgRef(
+                                distrib=distrib,
+                                package=package,
+                                ext=ext,
+                                sha256=sha256,
+                                meta=meta,
                                 package_path=filename_to_package[filename],
-                                meta_path=filename_to_meta[filename],
                         ))
 
         return pkg_refs
@@ -250,6 +276,9 @@ class FileSystemPkgRepo(PkgRepo):
     def download_index(self, path: str) -> DownloadIndexResult:
         try:
             with FileLock(self._index_lock_path, timeout=LOCK_TIMEOUT):
+                if not exists(self._index_path):
+                    # Initialize index file.
+                    BackendInstanceManager.dump_pkg_refs(self._index_path, [])
                 shutil.copyfile(self._index_path, path)
             return DownloadIndexResult(status=DownloadIndexStatus.SUCCEEDED)
 
