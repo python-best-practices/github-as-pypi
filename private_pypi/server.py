@@ -65,7 +65,7 @@ def load_user_from_request(_):
         return MockUser(pkg_repo_name=username, pkg_repo_secret_raw=password)
 
 
-@app.route("/login/", methods=["GET", "POST"])
+@app.route('/login/', methods=['GET', 'POST'])
 def login():
     if request.method == 'GET':
         return LOGIN_HTML
@@ -79,10 +79,10 @@ def login():
     session[SESSION_KEY_PKG_REPO_NAME] = pkg_repo_name
     session[SESSION_KEY_PKG_REPO_SECRET_RAW] = pkg_repo_secret_raw
 
-    return redirect(request.args.get("next") or '/simple/')
+    return redirect(request.args.get('next') or '/simple/')
 
 
-@app.route("/logout/", methods=["GET"])
+@app.route('/logout/', methods=['GET'])
 def logout():
     session[SESSION_KEY_PKG_REPO_NAME] = None
     session[SESSION_KEY_PKG_REPO_SECRET_RAW] = None
@@ -252,8 +252,8 @@ def run_server(
 
     # Setup logging.
     logging.basicConfig(level=logging.INFO)
-    logging.getLogger("filelock").setLevel(logging.WARNING)
-    logging.getLogger("apscheduler").setLevel(logging.WARNING)
+    logging.getLogger('filelock').setLevel(logging.WARNING)
+    logging.getLogger('apscheduler').setLevel(logging.WARNING)
     logging.getLogger().addHandler(logging.FileHandler(server_logging_path))
 
     if debug:

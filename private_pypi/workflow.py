@@ -257,7 +257,7 @@ def sync_local_index_job(
 
     # Setup logging.
     logging.basicConfig(level=logging.INFO)
-    logging.getLogger("filelock").setLevel(logging.WARNING)
+    logging.getLogger('filelock').setLevel(logging.WARNING)
     logger = logging.getLogger()
     logging_path = join(wstat.name_to_local_paths[name].log, 'sync_local_index_job.log')
     logger.addHandler(logging.FileHandler(logging_path))
@@ -407,8 +407,8 @@ def pkg_repo_secret_is_authenticated(
         pkg_repo_secret: PkgRepoSecret,
         check_auth_read: bool,
 ) -> Tuple[Optional[PkgRepo], str]:
-    """name has been validated.
-    """
+    '''name has been validated.
+    '''
     pkg_repo_config = wstat.name_to_pkg_repo_config[name]
 
     # Get package repository lock.
