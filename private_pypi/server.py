@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from os.path import join, splitext
+from os.path import join
 from typing import Any, Optional, Tuple
 import uuid
 import logging
@@ -19,7 +19,7 @@ from private_pypi.workflow import (
         workflow_api_simple_distrib,
         workflow_api_upload_package,
 )
-from private_pypi.utils import get_secret_key, decrypt_local_file_ref
+from private_pypi.utils import get_secret_key, decrypt_local_file_ref, split_package_ext
 from private_pypi.web import LOGIN_HTML
 
 app = Flask(__name__)  # pylint: disable=invalid-name
@@ -150,12 +150,9 @@ def pep503_api_simple_distrib(distrib):
 @app.route('/simple/<distrib>/<filename>', methods=['GET'])
 @login_required
 def pep503_api_redirect_package_download_url(distrib, filename):
-    package, ext = splitext(filename)
-    ext = ext.lstrip('.')
+    package, ext = split_package_ext(filename)
     if not ext:
-        return 'Empty extension.', 404
-    if len(ext) > len('tar.gz'):
-        return f'Invalid entension "{ext}"', 404
+        return 'Extension not supported.', 404
 
     pkg_repo_secret, err_msg = load_secret_from_request(current_app.workflow_stat)
     if pkg_repo_secret is None:
@@ -276,6 +273,7 @@ def run_server(
             print(str(response.headers).strip())
             print('==== RESPONSE DATA ====')
             print(response.get_data())
+            print()
             return response
 
         app.before_request(print_request)

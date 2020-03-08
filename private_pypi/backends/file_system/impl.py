@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import hashlib
 from os import makedirs
-from os.path import isdir, join, exists, splitext
+from os.path import isdir, join, exists
 import pathlib
 import shutil
 from typing import Dict, List, Tuple
@@ -29,6 +29,7 @@ from private_pypi.utils import (
         read_toml,
         git_hash_sha,
         encrypt_local_file_ref,
+        split_package_ext,
 )
 from private_pypi.job import dynamic_dramatiq
 
@@ -228,11 +229,8 @@ class FileSystemPkgRepo(PkgRepo):
                 if not distrib or not sha256:
                     continue
 
-                package, ext = splitext(filename)
-                ext = ext.lstrip('.')
-                if not package or not ext:
-                    continue
-                if len(ext) > len('tar.gz'):
+                package, ext = split_package_ext(filename)
+                if not ext:
                     continue
 
                 pkg_refs.append(

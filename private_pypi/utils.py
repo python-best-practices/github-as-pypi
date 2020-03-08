@@ -171,3 +171,31 @@ def decrypt_local_file_ref(text):
         return False, None, None
 
     return True, path, filename
+
+
+# https://github.com/pypa/pip/blob/716afdb4cf4783ba2f610c2010aa76c4ffdb22e7/src/pip/_internal/utils/filetypes.py
+_ARCHIVE_EXTENSIONS = {
+        '.zip',
+        '.whl',
+        '.tar.bz2',
+        '.tbz',
+        '.tar.gz',
+        '.tgz',
+        '.tar',
+        '.tar.xz',
+        '.txz',
+        '.tlz',
+        '.tar.lz',
+        '.tar.lzma',
+}
+
+_ARCHIVE_EXTENSION_LENGTHS = sorted(set(map(len, _ARCHIVE_EXTENSIONS)), reverse=True)
+
+
+def split_package_ext(filename):
+    for ext_len in _ARCHIVE_EXTENSION_LENGTHS:
+        if len(filename) > ext_len and filename[-ext_len:] in _ARCHIVE_EXTENSIONS:
+            package = filename[:-ext_len]
+            ext = filename[1 - ext_len:]  # Remove the leading dot.
+            return package, ext
+    return '', None

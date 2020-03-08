@@ -28,7 +28,7 @@ from private_pypi.backends.backend import (
         record_error_if_raises,
         basic_model_get_default,
 )
-from private_pypi.utils import git_hash_sha
+from private_pypi.utils import git_hash_sha, split_package_ext
 
 GITHUB_TYPE = 'github'
 
@@ -276,11 +276,8 @@ class GitHubPkgRepo(PkgRepo):
             if not distrib or not sha256:
                 continue
 
-            package, ext = os.path.splitext(release.tag_name)
-            ext = ext.lstrip('.')
-            if not package or not ext:
-                continue
-            if len(ext) > len('tar.gz'):
+            package, ext = split_package_ext(release.tag_name)
+            if not ext:
                 continue
 
             raw_assets = release._rawData.get('assets')  # pylint: disable=protected-access
