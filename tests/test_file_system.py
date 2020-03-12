@@ -1,28 +1,18 @@
-from typing import Optional, Tuple
+from typing import Tuple
 
 import shortuuid
 
-from private_pypi_testkit import TestKit
-from private_pypi.backends.backend import (
-        BackendInstanceManager,
-        PkgRepoConfig,
-        PkgRepoSecret,
-        PkgRepo,
-        LocalPaths,
-)
+from private_pypi_testkit import TestKit, RepoInfoForTest
 from private_pypi.backends.file_system.impl import (
-        FILE_SYSTEM_TYPE,
         FileSystemConfig,
         FileSystemSecret,
-        FileSystemPkgRepo,
-        FileSystemPkgRef,
 )
 
 
 class FileSystemTestKit(TestKit):
 
     @classmethod
-    def setup_pkg_repo(cls) -> Tuple[PkgRepoConfig, PkgRepoSecret, PkgRepoSecret]:
+    def setup_pkg_repo(cls) -> Tuple[FileSystemConfig, FileSystemSecret, FileSystemSecret]:
         name = f'fs-{shortuuid.uuid()}'
         raw_read_secret = 'foo'
         raw_write_secret = 'bar'
@@ -41,6 +31,11 @@ class FileSystemTestKit(TestKit):
                 raw=raw_write_secret,
         )
         return pkg_repo_config, read_secret, write_secret
+
+    @classmethod
+    def update_repo_index(cls, repo: RepoInfoForTest) -> bool:
+        # No need to update.
+        return True
 
 
 FileSystemTestKit.pytest_injection()

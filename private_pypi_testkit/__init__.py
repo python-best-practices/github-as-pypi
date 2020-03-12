@@ -1,7 +1,11 @@
 from abc import abstractmethod
 from dataclasses import dataclass
-import tempfile
+import os
 from typing import Optional, Tuple
+import inspect
+
+import pytest
+import shortuuid
 
 from private_pypi.backends.backend import (
         BackendInstanceManager,
@@ -10,6 +14,14 @@ from private_pypi.backends.backend import (
         PkgRepo,
         LocalPaths,
 )
+from private_pypi.workflow import (
+        WorkflowStat,
+        initialize_task_worker,
+        build_workflow_stat,
+        sync_local_index,
+        workflow_api_simple_distrib,
+        workflow_api_upload_package,
+)
 
 
 @dataclass
@@ -17,8 +29,67 @@ class RepoInfoForTest:
     pkg_repo_config_file: str
     admin_pkg_repo_secret_file: str
     root_folder: str
+    name: str
+    wstat: WorkflowStat
     read_secret: PkgRepoSecret
     write_secret: PkgRepoSecret
+
+
+def create_random_file(path, size):
+    with open(path, 'wb') as fout:
+        fout.write(os.urandom(size))
+    return path
+
+
+def test_upload_with_write_secret(session_repo, tmpdir, update_repo_index):
+    distrib = shortuuid.uuid()
+    filename = f'{distrib}-1.0-py3-none-any.whl'
+    path = tmpdir.join(filename)
+    create_random_file(path, 128)
+
+    # Upload.
+    _, status_code = workflow_api_upload_package(
+            wstat=session_repo.wstat,
+            name=session_repo.name,
+            pkg_repo_secret=session_repo.write_secret,
+            filename=filename,
+            meta={'name': distrib},
+            path=path,
+    )
+    assert status_code == 200
+
+    # Update index in remote.
+    assert update_repo_index(session_repo)
+
+    # Sync local index.
+    passed, _ = sync_local_index(session_repo.wstat)
+    assert passed
+
+    # Check if package exists.
+    _, status_code = workflow_api_simple_distrib(
+            wstat=session_repo.wstat,
+            name=session_repo.name,
+            pkg_repo_secret=session_repo.write_secret,
+            distrib=distrib,
+    )
+    assert status_code == 200
+
+
+def test_upload_with_read_secret(session_repo, tmpdir):
+    distrib = shortuuid.uuid()
+    filename = f'{distrib}-1.0-py3-none-any.whl'
+    path = tmpdir.join(filename)
+    create_random_file(path, 128)
+
+    _, status_code = workflow_api_upload_package(
+            wstat=session_repo.wstat,
+            name=session_repo.name,
+            pkg_repo_secret=session_repo.read_secret,
+            filename=filename,
+            meta={'name': distrib},
+            path=path,
+    )
+    assert status_code == 401
 
 
 class TestKit:
@@ -29,10 +100,12 @@ class TestKit:
         pass
 
     @classmethod
-    def pytest_injection(cls):
-        import pytest
-        import inspect
+    @abstractmethod
+    def update_repo_index(cls, repo: RepoInfoForTest) -> bool:
+        return False
 
+    @classmethod
+    def pytest_injection(cls):
         _caller_frame = inspect.currentframe().f_back
 
         def inject_to_caller(func):
@@ -50,20 +123,42 @@ class TestKit:
             BackendInstanceManager.dump_pkg_repo_configs(pkg_repo_config_file, [pkg_repo_config])
             BackendInstanceManager.dump_pkg_repo_secrets(admin_pkg_repo_secret_file, [write_secret])
 
-            return RepoInfoForTest(
+            root_folder = str(create_tmpdir('root'))
+
+            wstat = build_workflow_stat(
                     pkg_repo_config_file=pkg_repo_config_file,
                     admin_pkg_repo_secret_file=admin_pkg_repo_secret_file,
-                    root_folder=str(create_tmpdir('root')),
+                    root_folder=root_folder,
+                    auth_read_expires=0,
+                    auth_write_expires=0,
+            )
+
+            return RepoInfoForTest(
+                    name=pkg_repo_config.name.lower(),
+                    pkg_repo_config_file=pkg_repo_config_file,
+                    admin_pkg_repo_secret_file=admin_pkg_repo_secret_file,
+                    root_folder=root_folder,
                     read_secret=read_secret,
                     write_secret=write_secret,
+                    wstat=wstat,
             )
 
         @inject_to_caller
         @pytest.fixture(scope='session')
-        def session_repo(tmpdir_factory):
+        def session_repo(tmpdir_factory):  # pylint: disable=unused-variable
             yield _create_repo_for_test(tmpdir_factory.mktemp)
 
         @inject_to_caller
         @pytest.fixture(scope='function')
-        def function_repo(tmpdir):
+        def function_repo(tmpdir):  # pylint: disable=unused-variable
             yield _create_repo_for_test(tmpdir.mkdir)
+
+        @inject_to_caller
+        @pytest.fixture(scope='function')
+        def update_repo_index():  # pylint: disable=unused-variable
+            yield cls.update_repo_index
+
+        inject_to_caller(test_upload_with_write_secret)
+        inject_to_caller(test_upload_with_read_secret)
+
+        initialize_task_worker()
