@@ -1,0 +1,29 @@
+name: ci
+
+on:
+ push:
+
+jobs:
+
+ ci:
+  runs-on: ubuntu-latest
+  strategy:
+    matrix:
+      python_version: ['3.7', '3.8']
+  steps:
+    - uses: actions/checkout@v2
+
+    - name: Setup python
+      uses: actions/setup-python@v1
+      with:
+        python-version: ${{ matrix.python_version }}
+
+    - name: Setup pip/poetry
+      run: |
+        pip install -U pip poetry
+        pip --version
+        poetry --version
+        poetry config virtualenvs.create false
+
+    - name: pytest
+      run: pytest
